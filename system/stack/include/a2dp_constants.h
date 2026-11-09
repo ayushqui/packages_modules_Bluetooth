@@ -56,11 +56,16 @@ static constexpr uint16_t kAptxCompanyId = 0x004F;
 static constexpr uint16_t kAptxHdCompanyId = 0x00D7;
 static constexpr uint16_t kLdacCompanyId = 0x012D;
 static constexpr uint16_t kOpusCompanyId = 0x00E0;
+static constexpr uint16_t kLhdcCompanyId = 0x053A;
 
 static constexpr uint16_t kAptxCodecId = 0x0001;
 static constexpr uint16_t kAptxHdCodecId = 0x0024;
+static constexpr uint16_t kAptxAdaptiveCodecId = 0x00AD;
 static constexpr uint16_t kLdacCodecId = 0x00AA;
 static constexpr uint16_t kOpusCodecId = 0x0001;
+static constexpr uint16_t kLhdcV5CodecId = 0x4C35;
+static constexpr uint16_t kLhdcV3CodecId = 0x4C33;
+static constexpr uint16_t kLhdcV2CodecId = 0x4C32;
 
 /// Standardized codec identifiers.
 ///
@@ -84,8 +89,12 @@ enum class CodecId : uint64_t {
   AAC = 0x02,
   APTX = VendorCodecId(kAptxCompanyId, kAptxCodecId),
   APTX_HD = VendorCodecId(kAptxHdCompanyId, kAptxHdCodecId),
+  APTX_AD = VendorCodecId(kAptxHdCompanyId, kAptxAdaptiveCodecId),
   LDAC = VendorCodecId(kLdacCompanyId, kLdacCodecId),
   OPUS = VendorCodecId(kOpusCompanyId, kOpusCodecId),
+  LHDCV5 = VendorCodecId(kLhdcCompanyId, kLhdcV5CodecId),
+  LHDCV3 = VendorCodecId(kLhdcCompanyId, kLhdcV3CodecId),
+  LHDCV2 = VendorCodecId(kLhdcCompanyId, kLhdcV2CodecId),
 };
 
 /// Parse the standardized codec identifier from the Media Codec Capabilities.

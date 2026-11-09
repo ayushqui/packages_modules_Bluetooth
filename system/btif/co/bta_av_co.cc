@@ -51,11 +51,13 @@
 #include "device/include/device_iot_config.h"
 #include "include/hardware/bt_av.h"
 #include "osi/include/allocator.h"
+#include "osi/include/properties.h"
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_constants.h"
 #include "stack/include/a2dp_ext.h"
 #include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/btm_client_interface.h"
 #include "stack/include/bt_uuid16.h"
 
 using namespace bluetooth;
@@ -966,6 +968,21 @@ bool BtaAvCo::ReportSourceCodecState(BtaAvCoPeer* p_peer) {
             p_peer->addr);
     return false;
   }
+
+  // Stock Qualcomm path: report the actual BR/EDR QHS PHY result in
+  // aptX Adaptive codec_specific_3. The controller/peer QLL state is the
+  // authority; codec mode alone must never manufacture QHS availability.
+  if (!osi_property_get_bool("persist.vendor.qcom.bluetooth.vsc_enabled", false)) {
+    const bool is_qhs_phy_supported =
+            get_btm_client_interface().vendor.BTM_IsQHSPhySupported(
+                    p_peer->addr, BT_TRANSPORT_BR_EDR);
+    if (codec_config.codec_type == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE) {
+      codec_config.codec_specific_3 &= ~static_cast<int64_t>(QHS_SUPPORT_MASK);
+      codec_config.codec_specific_3 |= static_cast<int64_t>(
+              is_qhs_phy_supported ? QHS_SUPPORT_AVAILABLE : QHS_SUPPORT_NOT_AVAILABLE);
+    }
+  }
+
   log::info("peer {} codec_config={{}}", p_peer->addr, codec_config.ToString());
   btif_av_report_source_codec_state(p_peer->addr, codec_config, codecs_local_capabilities,
                                     codecs_selectable_capabilities);
@@ -1437,7 +1454,10 @@ static bool bta_av_co_should_select_hardware_codec(
   // Prioritize LDAC, AptX HD and AptX over AAC and SBC offload codecs
   if (software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC ||
       software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD ||
-      software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX) {
+      software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX ||
+      software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5 ||
+      software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV3 ||
+      software_codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV2) {
     log::verbose("select software codec: {}", A2DP_CodecIndexStr(software_codec_index));
     return false;
   }

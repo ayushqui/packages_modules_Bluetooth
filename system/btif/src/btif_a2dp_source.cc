@@ -645,25 +645,37 @@ static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
     return;
   }
 
-  const tA2DP_ENCODER_INTERFACE* encoder_interface = bta_av_co_get_encoder_interface(peer_address);
-  if (encoder_interface == nullptr) {
-    log::error("Cannot stream audio: no source encoder interface");
-    return;
-  }
-
   A2dpCodecConfig* a2dp_codec_config = bta_av_get_a2dp_current_codec();
   if (a2dp_codec_config == nullptr) {
     log::error("Cannot stream audio: current codec is not set");
     return;
   }
 
-  encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
-                                  btif_a2dp_source_enqueue_callback);
+  const tA2DP_ENCODER_INTERFACE* encoder_interface = bta_av_co_get_encoder_interface(peer_address);
+  const bool hardware_only_adaptive =
+          a2dp_codec_config->codecIndex() == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE;
+  if (encoder_interface == nullptr && !hardware_only_adaptive) {
+    log::error("Cannot stream audio: no source encoder interface");
+    return;
+  }
 
-  // Save a local copy of the encoder_interval_ms
-  btif_a2dp_source_cb.encoder_interface = encoder_interface;
-  btif_a2dp_source_cb.encoder_interval_ms =
-          btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms();
+  if (encoder_interface != nullptr) {
+    encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
+                                    btif_a2dp_source_enqueue_callback);
+
+    // Save a local copy of the encoder_interval_ms
+    btif_a2dp_source_cb.encoder_interface = encoder_interface;
+    btif_a2dp_source_cb.encoder_interval_ms =
+            btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms();
+  } else {
+    // aptX Adaptive is encoded by the Qualcomm offload engine.  There is no
+    // host-side encoder or timer for this codec; the A2DP start request below
+    // hands the negotiated stream directly to the controller/DSP.
+    btif_a2dp_source_cb.encoder_interface = nullptr;
+    btif_a2dp_source_cb.encoder_interval_ms = 0;
+    btif_a2dp_source_cb.sw_audio_is_encoding = false;
+    log::info("aptX Adaptive selected: using hardware-only encoder path");
+  }
 
   if (bluetooth::audio::a2dp::is_hal_enabled()) {
     bluetooth::audio::a2dp::ahal_codec_configuration config = {
@@ -678,6 +690,43 @@ static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
 
     bluetooth::audio::a2dp::setup_codec(config);
   }
+}
+
+static void btif_a2dp_source_codec_config_changed_delayed(
+        const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_config) {
+  static bool has_last_codec = false;
+  static RawAddress last_peer = RawAddress::kEmpty;
+  static btav_a2dp_codec_config_t last_codec = {};
+
+  if (codec_config.codec_type != BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5) {
+    return;
+  }
+  if (btif_a2dp_source_cb.State() != BtifA2dpSource::kStateRunning ||
+      peer_address != btif_av_source_active_peer()) {
+    log::verbose("ignore LHDC V5 codec refresh for peer={} while source state={}", peer_address,
+                 btif_a2dp_source_cb.StateStr());
+    return;
+  }
+  if (has_last_codec && peer_address == last_peer && codec_config == last_codec) {
+    log::verbose("skip duplicate LHDC V5 codec refresh for peer={}", peer_address);
+    return;
+  }
+
+  // Cache before setup_codec(): SetActivePeer() can report the same codec
+  // synchronously and schedule another refresh. Caching first breaks that loop.
+  last_peer = peer_address;
+  last_codec = codec_config;
+  has_last_codec = true;
+
+  log::info("refresh active LHDC V5 codec for peer={} config=[{}]", peer_address,
+            codec_config.ToString());
+  btif_a2dp_source_setup_codec(peer_address);
+}
+
+void btif_a2dp_source_codec_config_changed(
+        const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_config) {
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_codec_config_changed_delayed, peer_address,
+                                   codec_config));
 }
 
 static void btif_a2dp_source_cleanup_codec_delayed() {
@@ -858,8 +907,13 @@ static void btif_a2dp_source_audio_tx_start_event(void) {
     return;
   }
 
-  log::assert_that(btif_a2dp_source_cb.encoder_interface != nullptr,
-                   "assert failed: btif_a2dp_source_cb.encoder_interface != nullptr");
+  if (btif_a2dp_source_cb.encoder_interface == nullptr) {
+    // A hardware-only codec may receive the media-start event before the
+    // controller's offload-start response.  Do not crash or schedule a
+    // software timer in that window; the controller owns the stream.
+    log::warn("media start without a software encoder; waiting for offload path");
+    return;
+  }
 
   log::info("starting media encoder timer with interval {}ms",
             btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms());
@@ -933,8 +987,10 @@ static void btif_a2dp_source_audio_handle_timer(void) {
     previous_timestamp_us = timestamp_us;
   }
 
-  log::assert_that(btif_a2dp_source_cb.encoder_interface != nullptr,
-                   "assert failed: btif_a2dp_source_cb.encoder_interface != nullptr");
+  if (btif_a2dp_source_cb.encoder_interface == nullptr) {
+    log::warn("audio timer requested without a software encoder");
+    return;
+  }
 
 #ifdef __ANDROID__
   ATRACE_INT("btif TX queue", tx_queue_len);

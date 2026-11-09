@@ -93,6 +93,10 @@ void btif_a2dp_source_encoder_user_config_update_req(
 // |codec_audio_config.bits_per_sample| and |codec_audio_config.channel_mode|.
 void btif_a2dp_source_feeding_update_req(const btav_a2dp_codec_config_t& codec_audio_config);
 
+// Refresh the active encoder/HAL configuration after a negotiated LHDC V5 codec change.
+void btif_a2dp_source_codec_config_changed(
+        const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_config);
+
 // Process 'idle' request from the BTIF state machine during initialization.
 void btif_a2dp_source_on_idle(void);
 

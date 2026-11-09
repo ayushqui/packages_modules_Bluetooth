@@ -18,6 +18,7 @@ package android.bluetooth;
 
 import static android.bluetooth.BluetoothUtils.formatSimple;
 
+import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -26,6 +27,8 @@ import android.annotation.SuppressLint;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.os.Parcel;
 import android.os.Parcelable;
+
+import com.android.bluetooth.flags.Flags;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -53,6 +56,10 @@ public final class BluetoothCodecConfig implements Parcelable {
                 SOURCE_CODEC_TYPE_LDAC,
                 SOURCE_CODEC_TYPE_LC3,
                 SOURCE_CODEC_TYPE_OPUS,
+                SOURCE_CODEC_TYPE_LHDCV5,
+                SOURCE_CODEC_TYPE_LHDCV3,
+                SOURCE_CODEC_TYPE_LHDCV2,
+                SOURCE_CODEC_TYPE_APTX_ADAPTIVE,
                 SOURCE_CODEC_TYPE_INVALID
             })
     @Retention(RetentionPolicy.SOURCE)
@@ -115,6 +122,40 @@ public final class BluetoothCodecConfig implements Parcelable {
     @Deprecated public static final int SOURCE_CODEC_TYPE_OPUS = 6;
 
     /**
+     * Source codec type LHDC V5.
+     *
+     * @deprecated Use {@link BluetoothCodecType#CODEC_ID_LHDCV5} instead.
+     */
+    @Deprecated
+    @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
+    public static final int SOURCE_CODEC_TYPE_LHDCV5 = 7;
+
+    /**
+     * Source codec type LHDC V3/V4.
+     *
+     * @deprecated Use {@link BluetoothCodecType#CODEC_ID_LHDCV3} instead.
+     */
+    @Deprecated
+    @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
+    public static final int SOURCE_CODEC_TYPE_LHDCV3 = 8;
+
+    /**
+     * Source codec type LHDC V2.
+     *
+     * @deprecated Use {@link BluetoothCodecType#CODEC_ID_LHDCV2} instead.
+     */
+    @Deprecated
+    @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
+    public static final int SOURCE_CODEC_TYPE_LHDCV2 = 9;
+
+    /**
+     * Source codec type aptX Adaptive.
+     *
+     * @deprecated Use {@link BluetoothCodecType#CODEC_ID_APTX_ADAPTIVE} instead.
+     */
+    @Deprecated public static final int SOURCE_CODEC_TYPE_APTX_ADAPTIVE = 10;
+
+    /**
      * Source codec type invalid. This is the default value used for codec type.
      *
      * @deprecated Use the {@link BluetoothCodecType} values returned by {@link
@@ -123,7 +164,7 @@ public final class BluetoothCodecConfig implements Parcelable {
     @Deprecated public static final int SOURCE_CODEC_TYPE_INVALID = 1000 * 1000;
 
     /** Represents the count of valid source codec types. */
-    static final int SOURCE_CODEC_TYPE_MAX = 7;
+    static final int SOURCE_CODEC_TYPE_MAX = 11;
 
     /** @hide */
     @IntDef(
@@ -528,6 +569,10 @@ public final class BluetoothCodecConfig implements Parcelable {
             case SOURCE_CODEC_TYPE_LDAC -> "LDAC";
             case SOURCE_CODEC_TYPE_LC3 -> "LC3";
             case SOURCE_CODEC_TYPE_OPUS -> "Opus";
+            case SOURCE_CODEC_TYPE_LHDCV5 -> "LHDC V5";
+            case SOURCE_CODEC_TYPE_LHDCV3 -> "LHDC V3";
+            case SOURCE_CODEC_TYPE_LHDCV2 -> "LHDC V2";
+            case SOURCE_CODEC_TYPE_APTX_ADAPTIVE -> "aptX Adaptive";
             case SOURCE_CODEC_TYPE_INVALID -> "INVALID CODEC";
             default -> "UNKNOWN CODEC(" + codecType + ")";
         };
@@ -827,6 +872,11 @@ public final class BluetoothCodecConfig implements Parcelable {
                     return false;
                 }
             // fall through
+            case SOURCE_CODEC_TYPE_APTX_ADAPTIVE:
+                if (other.mCodecSpecific4 > 0) {
+                    return false;
+                }
+                // fall through
             default:
                 return true;
         }

@@ -16,6 +16,7 @@
 #define LOG_TAG "BTAudioA2dpAIDL"
 
 #include "a2dp_encoding_aidl.h"
+#include "btif/include/btif_av.h"
 
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
@@ -24,6 +25,7 @@
 
 #include "a2dp_encoding_aidl_utils.h"
 #include "a2dp_provider_info.h"
+#include "a2dp_vendor_aptx_adaptive_constants.h"
 #include "audio_aidl_interfaces.h"
 #include "client_interface_aidl.h"
 #include "codec_status_aidl.h"
@@ -732,6 +734,45 @@ provider::get_a2dp_configuration(
   auto a2dp_configuration = convertA2dpConfiguration(result.value());
   a2dp_configuration.codec_parameters.codec_type =
           provider_info->SourceCodecIndex(result->id).value();
+  a2dp_configuration.codec_parameters.codec_specific_1 = user_preferences.codec_specific_1;
+
+  // Qualcomm stock propagates the provider's lossless decision back into
+  // codec_specific_3. This is required so the stack and QTI offload layer
+  // carry the same QHS/R2.2 state selected by the provider.
+  if (result->parameters.lossless) {
+    a2dp_configuration.codec_parameters.codec_specific_3 &=
+            ~static_cast<int64_t>(QHS_SUPPORT_MASK);
+    a2dp_configuration.codec_parameters.codec_specific_3 |=
+            static_cast<int64_t>(QHS_SUPPORT_AVAILABLE);
+
+    if (result->id.getTag() == CodecId::vendor) {
+      const auto vendor_codec = result->id.get<CodecId::vendor>();
+      const uint32_t vendor_id = static_cast<uint32_t>(vendor_codec.id);
+      const uint16_t codec_id = static_cast<uint16_t>(vendor_codec.codecId);
+      if (vendor_id == A2DP_APTX_ADAPTIVE_VENDOR_ID &&
+          codec_id == A2DP_APTX_ADAPTIVE_CODEC_ID_BLUETOOTH &&
+          a2dp_configuration.codec_config[0] == A2DP_APTX_ADAPTIVE_CODEC_LEN) {
+        const uint8_t r2_2_version =
+                a2dp_configuration.codec_config[A2DP_APTX_ADAPTIVE_R2_X_VERSION_INDEX];
+        const uint8_t r2_2_feature =
+                a2dp_configuration.codec_config[A2DP_APTX_ADAPTIVE_R2_X_FEATURE_INDEX];
+        a2dp_configuration.codec_parameters.codec_specific_3 &=
+                ~static_cast<int64_t>(APTX_ADAPTIVE_R2_2_SUPPORT_MASK);
+        if (r2_2_version == A2DP_APTX_ADAPTIVE_CAP_EXT_VER_NUM &&
+            (r2_2_feature & A2DP_APTX_ADAPTIVE_SOURCE_ENCODER_R2_2_SUPPORTED) &&
+            (r2_2_feature & A2DP_APTX_ADAPTIVE_SINK_DECODER_R2_2_SUPPORTED)) {
+          a2dp_configuration.codec_parameters.codec_specific_3 |=
+                  static_cast<int64_t>(APTX_ADAPTIVE_R2_2_SUPPORT_AVAILABLE);
+        } else {
+          a2dp_configuration.codec_parameters.codec_specific_3 |=
+                  static_cast<int64_t>(APTX_ADAPTIVE_R2_2_SUPPORT_NOT_AVAILABLE);
+        }
+      }
+    }
+  } else {
+    log::debug("Lossless is not supported by remote");
+  }
+
   return std::make_optional(a2dp_configuration);
 }
 

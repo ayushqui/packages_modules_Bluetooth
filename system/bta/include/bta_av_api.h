@@ -32,6 +32,7 @@
 
 #include "bta/include/bta_api.h"
 #include "stack/include/avrc_defs.h"
+#include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
 
 /*****************************************************************************
@@ -152,7 +153,13 @@ typedef enum {
   BTA_AV_CODEC_TYPE_APTX = 0x04,
   BTA_AV_CODEC_TYPE_APTXHD = 0x08,
   BTA_AV_CODEC_TYPE_LDAC = 0x10,
-  BTA_AV_CODEC_TYPE_OPUS = 0x20
+  BTA_AV_CODEC_TYPE_OPUS = 0x20,
+  // Qualcomm's legacy A2DP offload VSC uses distinct values for LHDC
+  // revisions rather than a bit mask.
+  BTA_AV_CODEC_TYPE_LHDCV2 = 0x61,
+  BTA_AV_CODEC_TYPE_LHDCV3 = 0x62,
+  BTA_AV_CODEC_TYPE_LHDCV5 = 0x63,
+  BTA_AV_CODEC_TYPE_APTX_ADAPTIVE = 0x64,
 } tBTA_AV_CODEC_TYPE;
 
 /* Event associated with BTA_AV_ENABLE_EVT */
@@ -413,7 +420,7 @@ public:
   uint16_t acl_hdl;                     /* connection handle */
   uint16_t l2c_rcid;                    /* l2cap channel id */
   uint16_t mtu;                         /* MTU size */
-  uint8_t codec_info[32];               /* Codec specific information */
+  uint8_t codec_info[AVDT_CODEC_SIZE]; /* Codec specific information */
 };
 
 /*****************************************************************************
@@ -696,6 +703,10 @@ void BTA_AvMetaCmd(uint8_t rc_handle, uint8_t label, tBTA_AV_CMD cmd_code, BT_HD
  *
  ******************************************************************************/
 void BTA_AvSetLatency(tBTA_AV_HNDL handle, bool is_low_latency);
+
+void BTA_AvSetCodecMode(tBTA_AV_HNDL handle, uint16_t enc_mode);
+
+void BTA_AvUpdateAptxData(uint32_t data);
 
 /*******************************************************************************
  *

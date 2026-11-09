@@ -26,6 +26,7 @@ cc_library_static {
         "android.hardware.bluetooth.audio@2.1",
         "libhidlbase",
         "libutils",
+        "vendor.qti.hardware.bluetooth.audio-V1-ndk",
     ],
     static_libs: [
         "bluetooth_flags_c_lib",

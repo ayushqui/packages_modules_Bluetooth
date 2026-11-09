@@ -35,6 +35,8 @@ void tACL_CONN::Reset() {
   link_role = HCI_ROLE_CENTRAL;
   switch_role_failed_attempts = 0;
   memset(&remote_version_info, 0, sizeof(remote_version_info));
+  qll_features_state = 0;
+  remote_qll_features.fill(0);
   rs_disc_pending = BTM_SEC_RS_NOT_PENDING;
   switch_role_state_ = BTM_ACL_SWKEY_STATE_IDLE;
   sca = 0;

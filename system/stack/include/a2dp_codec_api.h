@@ -92,7 +92,7 @@ public:
 
   // Gets the bitRate for the A2DP codec.
   // Returns the bitrate of current codec configuration, or 0 if not configured
-  int getTrackBitRate() const;
+  virtual int getTrackBitRate() const;
 
   // Copies out the current OTA codec config to |p_codec_info|.
   // Returns true if the current codec config is valid and copied,
@@ -704,6 +704,13 @@ int A2DP_GetEecoderEffectiveFrameSize(const uint8_t* p_codec_info);
 // |p_codec_info| is a pointer to the codec_info to decode.
 // Returns a string describing the codec information.
 std::string A2DP_CodecInfoString(const uint8_t* p_codec_info);
+
+// aptX Adaptive capability state shared by A2DP negotiation and offload.
+// R2.2 remains disabled unless both the vendor property and an explicit
+// controller split-TX capability are present.
+bool A2DP_Get_Aptx_AdaptiveR2_1_Supported();
+bool A2DP_Get_Aptx_AdaptiveR2_2_Supported();
+bool A2DP_Get_Source_Aptx_Adaptive_SplitTx_Supported();
 
 // Add enum-based flag operators to the btav_a2dp_codec_config_t fields
 #ifndef DEFINE_ENUM_FLAG_OPERATORS

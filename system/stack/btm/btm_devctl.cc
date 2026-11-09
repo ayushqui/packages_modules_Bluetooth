@@ -38,6 +38,7 @@
 #include "main/shim/btm_api.h"
 #include "main/shim/entry.h"
 #include "stack/btm/btm_int_types.h"
+#include "stack/btm/btm_qhs.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/btm/internal/btm_api.h"
 #include "stack/connection_manager/connection_manager.h"
@@ -172,6 +173,9 @@ void BTM_reset_complete() {
   BTM_SetPinType(btm_sec_cb.cfg.pin_type, btm_sec_cb.cfg.pin_code, btm_sec_cb.cfg.pin_code_len);
 
   decode_controller_support();
+
+  // Qualcomm stock initializes QBCE/QHS after controller reset, once HCI is live.
+  BTM_QhsInit();
 }
 
 /*******************************************************************************

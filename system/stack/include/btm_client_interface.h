@@ -157,6 +157,10 @@ struct btm_client_interface_t {
   struct {
     void (*BTM_VendorSpecificCommand)(uint16_t opcode, uint8_t param_len, uint8_t* p_param_buf,
                                       tBTM_VSC_CMPL_CB* p_cb);
+    void (*BTM_ConfigQHS)();
+    [[nodiscard]] bool (*BTM_IsQHSPhySupported)(const RawAddress& bd_addr,
+                                                tBT_TRANSPORT transport);
+    void (*BTM_GetQllLocalSupportedFeatures)(uint8_t* features);
   } vendor;
 };
 

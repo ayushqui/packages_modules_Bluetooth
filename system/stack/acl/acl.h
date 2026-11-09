@@ -20,6 +20,7 @@
 #include <bluetooth/types/hci_role.h>
 #include <bluetooth/types/remote_version.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -226,6 +227,11 @@ public:
   uint8_t switch_role_failed_attempts;
 
   tREMOTE_VERSION_INFO remote_version_info;
+
+  // Qualcomm QLL/QHS link state. State values mirror the stock stack:
+  // 0=initial, 1=QLL connected/feature read pending, 2=features ready, 3=failed.
+  uint8_t qll_features_state{0};
+  std::array<uint8_t, 8> remote_qll_features{};
 
 #define BTM_SEC_RS_NOT_PENDING 0 /* Role Switch not in progress */
 #define BTM_SEC_RS_PENDING 1     /* Role Switch in progress */

@@ -31,6 +31,17 @@
 #include "bta/include/bta_av_api.h"
 #include "include/hardware/bt_av.h"
 
+#define APTX_HQ 0X1000
+#define APTX_LL 0X2000
+#define APTX_ULL_S 0X4000
+#define APTX_ULL 0X5000  // for 16 bit source
+#define APTX_MODE_MASK 0X7000
+
+// Qualcomm aptX Adaptive QHS availability encoding in codec_specific_3.
+#define QHS_SUPPORT_MASK 0x00000C00
+#define QHS_SUPPORT_NOT_AVAILABLE 0x00000400
+#define QHS_SUPPORT_AVAILABLE 0x00000800
+
 /** Callback for connection state change.
  *  state will have one of the values from btav_connection_state_t
  */
@@ -356,5 +367,9 @@ bool btif_av_peer_is_connected_source(const RawAddress& peer_address);
 bool btif_av_peer_is_sink(const RawAddress& peer_address);
 bool btif_av_peer_is_source(const RawAddress& peer_address);
 const RawAddress& btif_av_find_by_handle(tBTA_AV_HNDL bta_handle);
+
+uint16_t btif_av_get_aptx_mode_info();
+void btif_av_update_aptx_mode_info();
+void btif_av_update_codec_mode();
 
 #endif /* BTIF_AV_H */

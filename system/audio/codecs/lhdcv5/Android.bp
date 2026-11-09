@@ -1,0 +1,59 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_library_headers {
+    name: "liblhdcv5_headers",
+    export_include_dirs: ["include"],
+    host_supported: true,
+    min_sdk_version: "36",
+    apex_available: ["com.android.bt"],
+}
+
+rust_ffi_static {
+    name: "liblhdcv5_encoder_rust",
+    crate_name: "lhdcv5_encoder",
+    crate_root: "src/lib.rs",
+    edition: "2021",
+    vendor_available: true,
+    host_supported: true,
+    lints: "none",
+    rustlibs: [
+        "liblibc",
+        "liblog_rust",
+        "libthiserror",
+        "libtracing",
+        "libtracing_subscriber",
+        "libzerocopy",
+    ],
+    target: {
+        android: {
+            rustlibs: ["libandroid_logger"],
+        },
+        host: {
+            rustlibs: ["libenv_logger"],
+        },
+    },
+    min_sdk_version: "36",
+    apex_available: ["com.android.bt"],
+}
+
+cc_library_shared {
+    name: "liblhdcv5BT_enc",
+    vendor_available: true,
+    host_supported: true,
+    compile_multilib: "64",
+    export_include_dirs: ["include"],
+    srcs: ["src/lhdcv5BT_enc.c"],
+    whole_static_libs: ["liblhdcv5_encoder_rust"],
+    shared_libs: [
+        "libbase",
+        "liblog",
+    ],
+    min_sdk_version: "36",
+    apex_available: ["com.android.bt"],
+    visibility: [
+        "//packages/modules/Bluetooth/apex",
+        "//packages/modules/Bluetooth/system/stack",
+    ],
+}

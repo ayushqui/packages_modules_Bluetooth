@@ -76,6 +76,7 @@
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/btm_ble_api.h"
 #include "stack/include/btm_ble_api_types.h"
+#include "stack/btm/btm_qhs.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/main_thread.h"
 
@@ -117,12 +118,17 @@ typedef struct {
 
 typedef struct {
   bool is_low_latency;
+  bool is_gaming_enabled;
 } btif_av_set_latency_req_t;
 
 typedef struct {
   std::vector<btav_a2dp_codec_config_t> codec_preferences;
   std::promise<void> reconf_ready_promise;
 } btif_av_reconfig_req_t;
+
+typedef struct {
+  int enc_mode;
+} btif_av_codec_mode_change_t;
 
 /**
  * BTIF AV events
@@ -142,6 +148,7 @@ typedef enum {
   BTIF_AV_AVRCP_REMOTE_PLAY_EVT,
   BTIF_AV_SET_LATENCY_REQ_EVT,
   BTIF_AV_RECONFIGURE_REQ_EVT,
+  BTIF_AV_SET_CODEC_MODE_EVT,
 } btif_av_sm_event_t;
 
 class BtifAvEvent {
@@ -408,6 +415,8 @@ private:
   std::optional<btif_av_reconfig_req_t> reconfig_req_;
 };
 
+void btif_av_update_codec_mode();
+
 class BtifAvSource {
 public:
   // The PeerId is used as AppId for BTA_AvRegister() purpose
@@ -418,7 +427,10 @@ public:
       : callbacks_(nullptr),
         enabled_(false),
         a2dp_offload_enabled_(false),
-        max_connected_peers_(kDefaultMaxConnectedAudioDevices) {}
+        max_connected_peers_(kDefaultMaxConnectedAudioDevices),
+        aptx_mode_(APTX_HQ),
+        is_gaming_mode_(false),
+        is_spatial_audio_low_latency_mode_(false) {}
   ~BtifAvSource();
 
   void Init(btav_source_callbacks_t* callbacks, int max_connected_audio_devices,
@@ -575,6 +587,25 @@ public:
   void UpdateCodecConfig(const RawAddress& peer_address,
                          const std::vector<btav_a2dp_codec_config_t>& codec_preferences,
                          std::promise<void> peer_ready_promise) {
+    // Match stock Qualcomm behavior: forward any non-zero aptX Adaptive
+    // codec_specific_4 request to BTA. BTA_AvUpdateAptxData() itself only
+    // emits the encoder-data VSC for ULL-S ((data & 0x6000) == 0x4000).
+    for (const auto& cp : codec_preferences) {
+      if (cp.codec_type == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE &&
+          cp.codec_specific_4 > 0) {
+        const uint16_t cs4 = static_cast<uint16_t>(cp.codec_specific_4);
+        if ((cs4 & 0x6000) == 0x4000) {
+          BTM_QhsTestMaybeInjectBrEdrState(peer_address);
+        }
+        BTA_AvUpdateAptxData(cs4);
+        const uint16_t aptx_mode = static_cast<uint16_t>(cs4 & APTX_MODE_MASK);
+        SetGamingMode(aptx_mode == APTX_LL);
+        btif_av_update_codec_mode();
+        log::info("Update aptX Adaptive vendor data cs4=0x{:04x}", cs4);
+        break;
+      }
+    }
+
     // Restart the session if the codec for the active peer is updated
     if (!peer_address.IsEmpty() && active_peer_ == peer_address) {
       btif_a2dp_source_end_session(active_peer_);
@@ -633,6 +664,16 @@ public:
   BtifAvPeer* popPeer(const RawAddress& peer_address);
   void AddPeer(BtifAvPeer* peer);
 
+  void SetAptxMode(uint16_t mode) { aptx_mode_ = mode; }
+  uint16_t GetAptxMode() const { return aptx_mode_; }
+
+  void SetGamingMode(bool is_game_mode) { is_gaming_mode_ = is_game_mode; }
+  bool GetGamingMode() const { return is_gaming_mode_; }
+  void SetSpatialAudioLLMode(bool is_low_latency) {
+    is_spatial_audio_low_latency_mode_ = is_low_latency;
+  }
+  bool GetSpatialAudioLLMode() const { return is_spatial_audio_low_latency_mode_; }
+
 private:
   void CleanupAllPeers();
 
@@ -644,6 +685,9 @@ private:
   std::set<RawAddress> silenced_peers_;
   RawAddress active_peer_;
   std::map<uint8_t, tBTA_AV_HNDL> peer_id2bta_handle_;
+  uint16_t aptx_mode_;
+  bool is_gaming_mode_;
+  bool is_spatial_audio_low_latency_mode_;
   // protect for BtifAvSource::peers_
   mutable std::recursive_mutex btifavsource_peers_lock_;
 };
@@ -926,6 +970,7 @@ static const char* dump_av_sm_event_name(btif_av_sm_event_t event) {
     CASE_RETURN_STR(BTIF_AV_AVRCP_REMOTE_PLAY_EVT)
     CASE_RETURN_STR(BTIF_AV_SET_LATENCY_REQ_EVT)
     CASE_RETURN_STR(BTIF_AV_RECONFIGURE_REQ_EVT)
+    CASE_RETURN_STR(BTIF_AV_SET_CODEC_MODE_EVT)
     default:
       return "UNKNOWN_EVENT";
   }
@@ -2447,6 +2492,15 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
       BTA_AvSetLatency(peer_.BtaHandle(), p_set_latency_req->is_low_latency);
     } break;
 
+    case BTIF_AV_SET_CODEC_MODE_EVT: {
+      const btif_av_codec_mode_change_t* p_codec_mode_change =
+              static_cast<const btif_av_codec_mode_change_t*>(p_data);
+      log::info("Peer {} : event={} flags={} enc_mode={}",
+                peer_.PeerAddress().ToRedactedStringForLogging(), BtifAvEvent::EventName(event),
+                peer_.FlagsToString(), p_codec_mode_change->enc_mode);
+      BTA_AvSetCodecMode(peer_.BtaHandle(), p_codec_mode_change->enc_mode);
+    } break;
+
     case BTIF_AV_RECONFIGURE_REQ_EVT: {
       log::info("Peer {} : event={} flags={}", peer_.PeerAddress(), BtifAvEvent::EventName(event),
                 peer_.FlagsToString());
@@ -2692,6 +2746,15 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
                 p_set_latency_req->is_low_latency);
 
       BTA_AvSetLatency(peer_.BtaHandle(), p_set_latency_req->is_low_latency);
+    } break;
+
+    case BTIF_AV_SET_CODEC_MODE_EVT: {
+      const btif_av_codec_mode_change_t* p_codec_mode_change =
+              static_cast<const btif_av_codec_mode_change_t*>(p_data);
+      log::info("Peer {} : event={} flags={} enc_mode={}",
+                peer_.PeerAddress().ToRedactedStringForLogging(), BtifAvEvent::EventName(event),
+                peer_.FlagsToString(), p_codec_mode_change->enc_mode);
+      BTA_AvSetCodecMode(peer_.BtaHandle(), p_codec_mode_change->enc_mode);
     } break;
 
       CHECK_RC_EVENT(event, reinterpret_cast<tBTA_AV*>(p_data));
@@ -2968,6 +3031,7 @@ void btif_av_report_source_codec_state(
         const std::vector<btav_a2dp_codec_config_t>& codecs_selectable_capabilities) {
   log::verbose("peer={}", peer_address);
   if (btif_av_source.Enabled()) {
+    btif_a2dp_source_codec_config_changed(peer_address, codec_config);
     do_in_jni_thread(base::BindOnce(btif_av_source.Callbacks()->audio_config_cb, peer_address,
                                     codec_config, codecs_local_capabilities,
                                     codecs_selectable_capabilities));
@@ -4094,11 +4158,60 @@ void btif_av_set_dynamic_audio_buffer_size(uint8_t dynamic_audio_buffer_size) {
   btif_a2dp_source_set_dynamic_audio_buffer_size(dynamic_audio_buffer_size);
 }
 
+uint16_t btif_av_get_aptx_mode_info() {
+  const uint16_t aptx_mode = btif_av_source.GetAptxMode();
+  log::info("btif_av_get_aptx_mode_info: {}", aptx_mode);
+  return aptx_mode;
+}
+
+void btif_av_update_aptx_mode_info() {
+  const bool is_low_latency_mode =
+          btif_av_source.GetGamingMode() || btif_av_source.GetSpatialAudioLLMode();
+  const uint16_t old_aptx_mode = btif_av_get_aptx_mode_info();
+  const uint16_t new_aptx_mode = is_low_latency_mode ? APTX_LL : APTX_HQ;
+  if (old_aptx_mode != new_aptx_mode) {
+    log::info("btif_av_update_aptx_mode_info: aptx mode change from {} to {}",
+              old_aptx_mode, new_aptx_mode);
+  }
+  btif_av_source.SetAptxMode(new_aptx_mode);
+}
+
+void btif_av_update_codec_mode() {
+  A2dpCodecConfig* current_codec = bta_av_get_a2dp_current_codec();
+  if (current_codec == nullptr) {
+    return;
+  }
+
+  const btav_a2dp_codec_config_t codec_config = current_codec->getCodecConfig();
+  if (codec_config.codec_type != BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE) {
+    return;
+  }
+
+  const bool is_low_latency_mode =
+          btif_av_source.GetGamingMode() || btif_av_source.GetSpatialAudioLLMode();
+  btif_av_codec_mode_change_t codec_mode_change = {
+          .enc_mode = is_low_latency_mode ? APTX_LL : APTX_HQ,
+  };
+  BtifAvEvent btif_av_event(BTIF_AV_SET_CODEC_MODE_EVT, &codec_mode_change,
+                            sizeof(codec_mode_change));
+  log::info("peer_address={} event={} enc_mode=0x{:04x}",
+            btif_av_source_active_peer().ToRedactedStringForLogging(), btif_av_event.ToString(),
+            codec_mode_change.enc_mode);
+  do_in_main_thread(base::Bind(&btif_av_handle_event,
+                               AVDT_TSEP_SNK,
+                               btif_av_source_active_peer(), kBtaHandleUnknown, btif_av_event));
+}
+
 void btif_av_set_low_latency(bool is_low_latency) {
   log::info("active_peer={} is_low_latency={}", btif_av_source_active_peer(), is_low_latency);
 
+  btif_av_source.SetSpatialAudioLLMode(is_low_latency);
+  btif_av_update_aptx_mode_info();
+  btif_av_update_codec_mode();
+
   btif_av_set_latency_req_t set_latency_req;
   set_latency_req.is_low_latency = is_low_latency;
+  set_latency_req.is_gaming_enabled = btif_av_source.GetGamingMode();
   BtifAvEvent btif_av_event(BTIF_AV_SET_LATENCY_REQ_EVT, &set_latency_req, sizeof(set_latency_req));
 
   do_in_main_thread(base::BindOnce(&btif_av_handle_event,

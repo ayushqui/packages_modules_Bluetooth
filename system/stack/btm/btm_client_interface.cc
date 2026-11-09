@@ -19,6 +19,7 @@
 
 #include "security_client_callbacks.h"
 #include "stack/btm/btm_ble_int.h"
+#include "stack/btm/btm_qhs.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/btm_ble_api.h"
 
@@ -130,6 +131,9 @@ static struct btm_client_interface_t btm_client_interface = {
         .vendor =
                 {
                         .BTM_VendorSpecificCommand = ::BTM_VendorSpecificCommand,
+                        .BTM_ConfigQHS = ::BTM_ConfigQHS,
+                        .BTM_IsQHSPhySupported = ::BTM_IsQHSPhySupported,
+                        .BTM_GetQllLocalSupportedFeatures = ::BTM_GetQllLocalSupportedFeatures,
                 },
 };
 

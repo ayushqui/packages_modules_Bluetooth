@@ -36,9 +36,16 @@ public final class BluetoothCodecType implements Parcelable {
     private final long mCodecId;
     private final @NonNull String mCodecName;
 
+    private static long normalizeCodecId(long codecId) {
+        if (Flags.a2dpLhdcApi() && codecId >= 0) {
+            return codecId;
+        }
+        return codecId & 0xFFFFFFFFL;
+    }
+
     private BluetoothCodecType(Parcel in) {
         mNativeCodecType = in.readInt();
-        mCodecId = in.readLong() & 0xFFFFFFFFL;
+        mCodecId = normalizeCodecId(in.readLong());
         mCodecName = in.readString();
     }
 
@@ -54,13 +61,25 @@ public final class BluetoothCodecType implements Parcelable {
     /** Aptx HD codec identifier. See {@link BluetoothCodecType#getCodecId}. */
     public static final long CODEC_ID_APTX_HD = 0x002400d7ff;
 
+    /** AptX Adaptive codec identifier. See {@link BluetoothCodecType#getCodecId}. */
+    @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
+    public static final long CODEC_ID_APTX_ADAPTIVE = 0x00ad_00d7_ffL;
+
     /** LDAC codec identifier. See {@link BluetoothCodecType#getCodecId}. */
     public static final long CODEC_ID_LDAC = 0x00aa012dff;
 
     /** Opus codec identifier. See {@link BluetoothCodecType#getCodecId}. */
     public static final long CODEC_ID_OPUS = 0x000100e0ff;
 
-    /** LHDC codec identifier. See {@link BluetoothCodecType#getCodecId}. */
+    /** LHDC V2 codec identifier. See {@link BluetoothCodecType#getCodecId}. */
+    @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
+    public static final long CODEC_ID_LHDCV2 = 0x4c32_053a_ffL;
+
+    /** LHDC V3 codec identifier. See {@link BluetoothCodecType#getCodecId}. */
+    @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
+    public static final long CODEC_ID_LHDCV3 = 0x4c33_053a_ffL;
+
+    /** LHDC V5 codec identifier. See {@link BluetoothCodecType#getCodecId}. */
     @FlaggedApi(Flags.FLAG_A2DP_LHDC_API)
     public static final long CODEC_ID_LHDCV5 = 0x4c35_053a_ffL;
 
@@ -72,7 +91,7 @@ public final class BluetoothCodecType implements Parcelable {
      */
     private BluetoothCodecType(@BluetoothCodecConfig.SourceCodecType int codecType, long codecId) {
         mNativeCodecType = codecType;
-        mCodecId = codecId & 0xFFFFFFFFL;
+        mCodecId = normalizeCodecId(codecId);
         mCodecName = BluetoothCodecConfig.getCodecName(codecType);
     }
 
@@ -87,7 +106,7 @@ public final class BluetoothCodecType implements Parcelable {
     @SystemApi
     public BluetoothCodecType(int codecType, long codecId, @NonNull String codecName) {
         mNativeCodecType = codecType;
-        mCodecId = codecId & 0xFFFFFFFFL;
+        mCodecId = normalizeCodecId(codecId);
         mCodecName = codecName;
     }
 
@@ -183,8 +202,13 @@ public final class BluetoothCodecType implements Parcelable {
                     case BluetoothCodecConfig.SOURCE_CODEC_TYPE_AAC -> CODEC_ID_AAC;
                     case BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX -> CODEC_ID_APTX;
                     case BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_HD -> CODEC_ID_APTX_HD;
+                    case BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE ->
+                            CODEC_ID_APTX_ADAPTIVE;
                     case BluetoothCodecConfig.SOURCE_CODEC_TYPE_LDAC -> CODEC_ID_LDAC;
                     case BluetoothCodecConfig.SOURCE_CODEC_TYPE_OPUS -> CODEC_ID_OPUS;
+                    case BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV5 -> CODEC_ID_LHDCV5;
+                    case BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV3 -> CODEC_ID_LHDCV3;
+                    case BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV2 -> CODEC_ID_LHDCV2;
                     case BluetoothCodecConfig.SOURCE_CODEC_TYPE_LC3,
                             BluetoothCodecConfig.SOURCE_CODEC_TYPE_INVALID ->
                             -1;

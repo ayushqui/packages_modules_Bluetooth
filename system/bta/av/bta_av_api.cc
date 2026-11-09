@@ -621,6 +621,30 @@ void BTA_AvSetLatency(tBTA_AV_HNDL handle, bool is_low_latency) {
   bta_sys_sendmsg(p_buf);
 }
 
+void BTA_AvSetCodecMode(tBTA_AV_HNDL handle, uint16_t enc_mode) {
+  tBTA_AV_SET_CODEC_MODE* p_buf =
+          (tBTA_AV_SET_CODEC_MODE*)osi_malloc(sizeof(tBTA_AV_SET_CODEC_MODE));
+  p_buf->hdr.event = BTA_AV_SET_CODEC_MODE_EVT;
+  p_buf->hdr.layer_specific = handle;
+  p_buf->enc_mode = enc_mode;
+  bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvUpdateAptxData(uint32_t data) {
+  // Stock HyperOS only forwards the ULL-S selector. Its binary checks
+  // (data & 0x6000) == 0x4000, then queues type=3/data=1.
+  if ((data & 0x6000) != 0x4000) {
+    return;
+  }
+
+  tBTA_AV_APTX_DATA* p_buf =
+          (tBTA_AV_APTX_DATA*)osi_malloc(sizeof(tBTA_AV_APTX_DATA));
+  p_buf->hdr.event = BTA_AV_UPDATE_APTX_DATA_EVT;
+  p_buf->type = 3;
+  p_buf->data = 1;
+  bta_sys_sendmsg(p_buf);
+}
+
 /*******************************************************************************
  *
  * Function         BTA_AvSetPeerSep

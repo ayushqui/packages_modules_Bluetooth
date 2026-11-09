@@ -129,6 +129,7 @@ cc_library_shared {
         "libnativehelper",
         "libstatssocket",
         "libvndksupport",
+        "vendor.qti.hardware.bluetooth.audio-V1-ndk",
     ],
     sanitize: {
         scs: true,

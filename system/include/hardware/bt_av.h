@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "stack/include/a2dp_constants.h"
+#include "stack/include/avdt_api.h"
 
 __BEGIN_DECLS
 
@@ -62,6 +63,10 @@ typedef enum {
   BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC,
   BTAV_A2DP_CODEC_INDEX_SOURCE_LC3,
   BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS,
+  BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5,
+  BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV3,
+  BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV2,
+  BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE,
 
   BTAV_A2DP_CODEC_INDEX_SOURCE_MAX,
 
@@ -185,6 +190,14 @@ struct btav_a2dp_codec_config_t {
         return "aptX HD";
       case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
         return "LDAC";
+      case BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5:
+        return "LHDC V5";
+      case BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV3:
+        return "LHDC V3";
+      case BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV2:
+        return "LHDC V2";
+      case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE:
+        return "aptX Adaptive";
       case BTAV_A2DP_CODEC_INDEX_SINK_SBC:
         return "SBC (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SINK_AAC:
@@ -280,7 +293,7 @@ typedef struct {
 typedef struct {
   ::bluetooth::a2dp::CodecId codec_id;
   std::string name;
-  uint8_t media_codec_capabilites[20];
+  uint8_t media_codec_capabilites[AVDT_CODEC_SIZE];
   btav_a2dp_codec_config_t codec_capabilities;
   bool lossless;
 

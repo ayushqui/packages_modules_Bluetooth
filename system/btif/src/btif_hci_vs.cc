@@ -23,6 +23,7 @@
 #include "main/shim/entry.h"
 #include "packet/raw_builder.h"
 #include "stack/include/main_thread.h"
+#include "stack/btm/btm_qhs.h"
 
 namespace bluetooth {
 namespace hci_vs {
@@ -63,6 +64,7 @@ static void EventCallback(BluetoothHciVendorSpecificCallbacks* callbacks,
   }
 
   std::vector<uint8_t> data(view.GetPayload().begin(), view.GetPayload().end());
+  BTM_QllVendorSpecificEvent(code, data.data(), data.size());
   do_in_jni_thread(base::BindOnce(&BluetoothHciVendorSpecificCallbacks::onEvent,
                                   base::Unretained(callbacks), code, data));
 }

@@ -41,6 +41,7 @@
 #include "a2dp_codec_api.h"
 #include "a2dp_constants.h"
 #include "a2dp_sbc_constants.h"
+#include "a2dp_vendor_aptx_adaptive.h"
 #include "avdt_api.h"
 #include "avrc_api.h"
 #include "avrc_defs.h"
@@ -121,7 +122,8 @@ constexpr char kBtmLogTag[] = "A2DP";
 #endif
 
 static void bta_av_accept_open_timer_cback(void* data);
-static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p_a2dp_offload);
+static bool bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
+                                         tBT_A2DP_OFFLOAD* p_a2dp_offload);
 
 /* state machine states */
 enum {
@@ -3046,21 +3048,70 @@ void bta_av_open_at_inc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   }
 }
 
+void bta_av_set_codec_mode(tBTA_AV_DATA* p_data) {
+  uint8_t param[6] = {};
+  uint8_t* p_param = param;
+  const uint16_t enc_mode = p_data->set_codec_mode.enc_mode;
+
+  UINT8_TO_STREAM(p_param, VS_QHCI_ENCODER_MODE_CHANGE);
+  UINT8_TO_STREAM(p_param, 1);
+  UINT8_TO_STREAM(p_param, BTA_AV_ENCODER_MODE_CHANGE_ID);
+  UINT8_TO_STREAM(p_param, 2);
+  UINT16_TO_STREAM(p_param, enc_mode);
+
+  get_btm_client_interface().vendor.BTM_VendorSpecificCommand(
+          HCI_QTI_CONTROLLER_A2DP_OPCODE, sizeof(param), param, nullptr);
+}
+
+static void aptx_data_vendor_callback(tBTM_VSC_CMPL* param) {
+  if (param == nullptr) {
+    log::error("aptX data callback: null controller response");
+    return;
+  }
+  const uint8_t status =
+          (param->param_len > 0 && param->p_param_buf != nullptr) ? param->p_param_buf[0] : 0xff;
+  log::info("aptX data controller callback opcode=0x{:04x} status=0x{:02x}",
+            param->opcode, status);
+}
+
+void bta_av_update_aptx_data(tBTA_AV_DATA* p_data) {
+  uint8_t param[6] = {};
+  uint8_t* p_param = param;
+  const uint8_t subband_id = static_cast<uint8_t>(p_data->aptx_data.type);
+  const uint8_t subband_data = static_cast<uint8_t>(p_data->aptx_data.data);
+
+  UINT8_TO_STREAM(p_param, VS_QHCI_ENCODER_MODE_CHANGE);
+  UINT8_TO_STREAM(p_param, 1);
+  UINT8_TO_STREAM(p_param, BTA_AV_ENCODER_DATA_ID);
+  UINT8_TO_STREAM(p_param, 2);
+  UINT8_TO_STREAM(p_param, subband_id);
+  UINT8_TO_STREAM(p_param, subband_data);
+
+  get_btm_client_interface().vendor.BTM_VendorSpecificCommand(
+          HCI_VSQC_CONTROLLER_A2DP_OPCODE, sizeof(param), param, aptx_data_vendor_callback);
+}
+
 static void offload_vendor_callback(tBTM_VSC_CMPL* param) {
   tBTA_AV value{0};
   uint8_t sub_opcode = 0;
-  if (param->param_len) {
+  const bool qti_command =
+          param->opcode == (HCI_GRP_VENDOR_SPECIFIC | HCI_QTI_CONTROLLER_A2DP_OPCODE);
+  if (param->param_len >= 1 && param->p_param_buf != nullptr) {
     log::verbose("param_len = {} status = {}", param->param_len, param->p_param_buf[0]);
     value.status = static_cast<tBTA_AV_STATUS>(param->p_param_buf[0]);
   }
   if (value.status == 0) {
-    sub_opcode = param->p_param_buf[1];
+    if (param->param_len >= 2 && param->p_param_buf != nullptr) {
+      sub_opcode = param->p_param_buf[1];
+    }
     log::verbose("subopcode = {}", sub_opcode);
     switch (sub_opcode) {
+      case HCI_QTI_A2DP_OFFLOAD_STOP:
       case VS_HCI_A2DP_OFFLOAD_STOP:
       case VS_HCI_A2DP_OFFLOAD_STOP_V2:
         log::verbose("VS_HCI_STOP_A2DP_MEDIA successful");
         break;
+      case HCI_QTI_A2DP_OFFLOAD_START:
       case VS_HCI_A2DP_OFFLOAD_START:
       case VS_HCI_A2DP_OFFLOAD_START_V2:
         if (bta_av_cb.offload_start_pending_hndl) {
@@ -3073,6 +3124,15 @@ static void offload_vendor_callback(tBTM_VSC_CMPL* param) {
         (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
         break;
       default:
+        // A few controller revisions return only the status byte for the
+        // Qualcomm command.  The command is still a successful start when
+        // the QTI path has a pending handle.
+        if (qti_command && param->param_len == 1 && bta_av_cb.offload_start_qti &&
+            bta_av_cb.offload_start_pending_hndl) {
+          bta_av_cb.offload_started_hndl = bta_av_cb.offload_start_pending_hndl;
+          bta_av_cb.offload_start_pending_hndl = BTA_AV_INVALID_HANDLE;
+          (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+        }
         break;
     }
   } else {
@@ -3105,6 +3165,7 @@ static void bta_av_vendor_offload_start(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* of
   ARRAY_TO_STREAM(p_param, offload_start->codec_info, (int8_t)sizeof(offload_start->codec_info));
   bta_av_cb.offload_start_pending_hndl = p_scb->hndl;
   bta_av_cb.offload_start_v2 = false;
+  bta_av_cb.offload_start_qti = false;
   log::info(
           "codec: {:#x}, sample rate: {:#x}, bit depth: {:#x}, channel: {:#x}, "
           "bitrate: {:#x}, ACL: {:#x}, L2CAP: {:#x}, MTU: {:#x}",
@@ -3113,6 +3174,58 @@ static void bta_av_vendor_offload_start(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* of
           offload_start->l2c_rcid, offload_start->mtu);
   get_btm_client_interface().vendor.BTM_VendorSpecificCommand(HCI_CONTROLLER_A2DP, p_param - param,
                                                               param, offload_vendor_callback);
+}
+
+/*
+ * Qualcomm's legacy controller uses a different A2DP command for aptX
+ * Adaptive than the generic 0x015d offload command.  The 0x000a command is
+ * deliberately kept Adaptive-only here: existing SBC/AAC/aptX/LDAC/LHDC
+ * streams continue to use their established generic path.
+ */
+static void bta_av_qti_offload_start(tBTA_AV_SCB* p_scb,
+                                     tBT_A2DP_OFFLOAD* offload_start) {
+  uint8_t param[sizeof(tBT_A2DP_OFFLOAD) + 32] = {};
+  uint8_t* p_param = param;
+  const uint16_t mtu = offload_start->mtu + AVDT_MEDIA_HDR_SIZE;
+
+  UINT8_TO_STREAM(p_param, HCI_QTI_A2DP_OFFLOAD_START);
+  UINT8_TO_STREAM(p_param, static_cast<uint8_t>(offload_start->codec_type));
+  UINT8_TO_STREAM(p_param, 0);  // transport type: slimbus
+  UINT8_TO_STREAM(p_param, static_cast<uint8_t>(offload_start->codec_type));
+  UINT8_TO_STREAM(p_param, 0);  // device index
+  UINT8_TO_STREAM(p_param, 0);  // max latency
+  UINT8_TO_STREAM(p_param, 0);  // delay reporting
+  UINT8_TO_STREAM(p_param, offload_start->scms_t_enable[0]);
+  UINT8_TO_STREAM(p_param, 2);  // CP flag: SCMS-T
+  UINT16_TO_STREAM(p_param, offload_start->sample_rate);
+  UINT16_TO_STREAM(p_param, offload_start->acl_hdl);
+  UINT16_TO_STREAM(p_param, offload_start->l2c_rcid);
+  UINT16_TO_STREAM(p_param, mtu);
+  UINT8_TO_STREAM(p_param, 1);  // stream start
+  UINT8_TO_STREAM(p_param, 0);  // split ACL/TWS disabled
+  UINT8_TO_STREAM(p_param, 0);  // channel mode (stereo/default)
+  UINT16_TO_STREAM(p_param, 150);  // time to play
+
+  // Unlike the generic command, Qualcomm consumes the complete Adaptive
+  // AVDTP information element, including the R2.x feature bytes.
+  ARRAY_TO_STREAM(p_param, p_scb->cfg.codec_info, AVDT_CODEC_SIZE);
+
+  // The Adaptive codec information element selects the DSP profile. Do not
+  // infer controller QHS/QLL support from the lossless codec configuration.
+  // Qualcomm's QHS path is negotiated separately from controller and peer
+  // capabilities, so no encoder-data sideband is sent here.
+  const bool lossless =
+          A2DP_VendorIsLosslessConfigAptxAdaptive(p_scb->cfg.codec_info);
+
+  bta_av_cb.offload_start_pending_hndl = p_scb->hndl;
+  bta_av_cb.offload_start_v2 = false;
+  bta_av_cb.offload_start_qti = true;
+  log::info("QTI aptX Adaptive offload start: rate={} mtu={} acl={} rcid={} lossless={}",
+            offload_start->sample_rate, mtu, offload_start->acl_hdl, offload_start->l2c_rcid,
+            lossless);
+  get_btm_client_interface().vendor.BTM_VendorSpecificCommand(
+          HCI_QTI_CONTROLLER_A2DP_OPCODE, (p_param - param) - 1, param,
+          offload_vendor_callback);
 }
 
 static void bta_av_vendor_offload_start_v2(tBTA_AV_SCB* p_scb, A2dpCodecConfigExt* offload_codec) {
@@ -3159,6 +3272,7 @@ static void bta_av_vendor_offload_start_v2(tBTA_AV_SCB* p_scb, A2dpCodecConfigEx
   // Update the pending state.
   bta_av_cb.offload_start_pending_hndl = p_scb->hndl;
   bta_av_cb.offload_start_v2 = true;
+  bta_av_cb.offload_start_qti = false;
 
   get_btm_client_interface().vendor.BTM_VendorSpecificCommand(HCI_CONTROLLER_A2DP, p_param - param,
                                                               param, offload_vendor_callback);
@@ -3169,6 +3283,18 @@ void bta_av_vendor_offload_stop() {
   uint8_t* p_param = param;
 
   log::verbose("");
+
+  if (bta_av_cb.offload_start_qti) {
+    // The QTI stop command has no connection-specific payload.  Do not use
+    // the generic callback: some controller revisions return only a status
+    // byte and there is no pending start response to complete here.
+    param[0] = HCI_QTI_A2DP_OFFLOAD_STOP;
+    param[1] = 0;
+    bta_av_cb.offload_start_qti = false;
+    get_btm_client_interface().vendor.BTM_VendorSpecificCommand(
+            HCI_QTI_CONTROLLER_A2DP_OPCODE, 2, param, nullptr);
+    return;
+  }
 
   if (bta_av_cb.offload_start_v2) {
     tBTA_AV_SCB* p_scb = bta_av_hndl_to_scb(bta_av_cb.offload_start_pending_hndl);
@@ -3212,7 +3338,7 @@ void bta_av_vendor_offload_stop() {
  ******************************************************************************/
 void bta_av_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* /*p_data*/) {
   tBTA_AV bta_av_data = {};
-  tBT_A2DP_OFFLOAD offload_start;
+  tBT_A2DP_OFFLOAD offload_start = {};
   log::verbose("stream {}, audio channels open {}", p_scb->started ? "STARTED" : "STOPPED",
                bta_av_cb.audio_open_cnt);
 
@@ -3231,10 +3357,29 @@ void bta_av_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* /*p_data*/) {
   A2dpCodecConfig* codec_config = bta_av_get_a2dp_current_codec();
   log::assert_that(codec_config != nullptr, "assert failed: codec_config != nullptr");
 
+  // The legacy Qualcomm command is required for aptX Adaptive (including the
+  // R2.2/44.1-kHz lossless configuration).  Build its common fields first,
+  // then send the Adaptive-specific command instead of the generic 0x015d
+  // payload used by the other codecs.
+  if (A2DP_SourceCodecIndex(p_scb->cfg.codec_info) ==
+      BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE) {
+    if (!bta_av_offload_codec_builder(p_scb, &offload_start)) {
+      bta_av_data.status = BTA_AV_FAIL_STREAM;
+      (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+      return;
+    }
+    bta_av_qti_offload_start(p_scb, &offload_start);
+    return;
+  }
+
   if (codec_config->isHardwareProviderCodec()) {
     bta_av_vendor_offload_start_v2(p_scb, static_cast<A2dpCodecConfigExt*>(codec_config));
   } else {
-    bta_av_offload_codec_builder(p_scb, &offload_start);
+    if (!bta_av_offload_codec_builder(p_scb, &offload_start)) {
+      bta_av_data.status = BTA_AV_FAIL_STREAM;
+      (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+      return;
+    }
     bta_av_vendor_offload_start(p_scb, &offload_start);
   }
 }
@@ -3266,7 +3411,8 @@ void bta_av_offload_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
 }
 
-static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p_a2dp_offload) {
+static bool bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
+                                         tBT_A2DP_OFFLOAD* p_a2dp_offload) {
   A2dpCodecConfig* CodecConfig = bta_av_get_a2dp_current_codec();
   btav_a2dp_codec_index_t codec_index = A2DP_SourceCodecIndex(p_scb->cfg.codec_info);
   uint32_t codec_type = 0;
@@ -3289,15 +3435,30 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD:
       codec_type = BTA_AV_CODEC_TYPE_APTXHD;
       break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE:
+      // Qualcomm's legacy controller offload command uses this dedicated
+      // codec selector for aptX Adaptive. Keep the stack enum separate from
+      // the wire value used by the vendor command.
+      codec_type = 10;
+      break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
       codec_type = BTA_AV_CODEC_TYPE_LDAC;
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS:
       codec_type = BTA_AV_CODEC_TYPE_OPUS;
       break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV2:
+      codec_type = BTA_AV_CODEC_TYPE_LHDCV2;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV3:
+      codec_type = BTA_AV_CODEC_TYPE_LHDCV3;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5:
+      codec_type = BTA_AV_CODEC_TYPE_LHDCV5;
+      break;
     default:
-      log::error("Unknown Codec type");
-      return;
+      log::error("Unknown codec type {}", codec_index);
+      return false;
   }
   if (mtu > MAX_3MBPS_AVDTP_MTU) {
     mtu = MAX_3MBPS_AVDTP_MTU;
@@ -3326,11 +3487,21 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p
     case 96000:
       p_a2dp_offload->sample_rate = BTAV_A2DP_CODEC_SAMPLE_RATE_96000;
       break;
+    case 176400:
+      p_a2dp_offload->sample_rate = BTAV_A2DP_CODEC_SAMPLE_RATE_176400;
+      break;
+    case 192000:
+      p_a2dp_offload->sample_rate = BTAV_A2DP_CODEC_SAMPLE_RATE_192000;
+      break;
+    default:
+      log::error("Unsupported offload sample rate {}",
+                 A2DP_GetTrackSampleRate(p_scb->cfg.codec_info));
+      return false;
   }
   if (stack::l2cap::get_interface().L2CA_GetRemoteChannelId(p_scb->l2c_cid,
                                                             &p_a2dp_offload->l2c_rcid) == false) {
     log::error("Failed to fetch l2c rcid");
-    return;
+    return false;
   }
   switch (CodecConfig->getAudioBitsPerSample()) {
     case 16:
@@ -3342,12 +3513,17 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p
     case 32:
       p_a2dp_offload->bits_per_sample = BTAV_A2DP_CODEC_BITS_PER_SAMPLE_32;
       break;
+    default:
+      log::error("Unsupported offload bit depth {}", CodecConfig->getAudioBitsPerSample());
+      return false;
   }
   p_a2dp_offload->ch_mode = A2DP_GetTrackChannelCount(p_scb->cfg.codec_info);
   p_a2dp_offload->encoded_audio_bitrate = CodecConfig->getTrackBitRate();
   if (!CodecConfig->getCodecSpecificConfig(p_a2dp_offload)) {
     log::error("not a valid codec info");
+    return false;
   }
+  return true;
 }
 void bta_av_api_set_peer_sep(tBTA_AV_DATA* p_data) {
   log::verbose("bd_addr={}, sep:{}", p_data->peer_sep.addr, p_data->peer_sep.sep);

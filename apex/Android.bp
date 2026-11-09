@@ -31,6 +31,12 @@ apex {
     ],
     apps: ["Bluetooth"],
 
+    // LHDC software encoders and their transitive proprietary codec cores.
+    native_shared_libs: [
+        "liblhdcBT_enc",
+        "liblhdcv5BT_enc",
+    ],
+
     multilib: {
         first: {
             // Extractor process runs only with the primary ABI.

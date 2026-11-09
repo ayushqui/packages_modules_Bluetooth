@@ -117,6 +117,8 @@ enum {
   BTA_AV_AVDT_RPT_CONN_EVT,
   BTA_AV_API_PEER_SEP_EVT,
   BTA_AV_API_SET_LATENCY_EVT,
+  BTA_AV_SET_CODEC_MODE_EVT,
+  BTA_AV_UPDATE_APTX_DATA_EVT,
 };
 
 /* events for AV control block state machine */
@@ -128,9 +130,9 @@ enum {
 
 /* events that do not go through state machine */
 #define BTA_AV_FIRST_NSM_EVT BTA_AV_API_ENABLE_EVT
-#define BTA_AV_LAST_NSM_EVT BTA_AV_API_SET_LATENCY_EVT
+#define BTA_AV_LAST_NSM_EVT BTA_AV_UPDATE_APTX_DATA_EVT
 
-#define BTA_AV_LAST_EVT BTA_AV_API_SET_LATENCY_EVT
+#define BTA_AV_LAST_EVT BTA_AV_UPDATE_APTX_DATA_EVT
 
 /* maximum number of SEPS in stream discovery results */
 #define BTA_AV_NUM_SEPS 32
@@ -254,6 +256,17 @@ typedef struct {
   BT_HDR_RIGID hdr;
   bool is_low_latency;
 } tBTA_AV_API_SET_LATENCY;
+
+typedef struct {
+  BT_HDR_RIGID hdr;
+  uint16_t enc_mode;
+} tBTA_AV_SET_CODEC_MODE;
+
+typedef struct {
+  BT_HDR_RIGID hdr;
+  uint16_t type;
+  uint16_t data;
+} tBTA_AV_APTX_DATA;
 
 /* data type for BTA_AV_AP_START_EVT from API and bta_av_do_start */
 typedef struct {
@@ -430,6 +443,8 @@ union tBTA_AV_DATA {
   tBTA_AV_API_REG api_reg;
   tBTA_AV_API_OPEN api_open;
   tBTA_AV_API_SET_LATENCY api_set_latency;
+  tBTA_AV_SET_CODEC_MODE set_codec_mode;
+  tBTA_AV_APTX_DATA aptx_data;
   tBTA_AV_DO_START do_start;
   tBTA_AV_API_STOP api_stop;
   tBTA_AV_API_DISCNT api_discnt;
@@ -642,6 +657,8 @@ typedef struct {
   /* Set to true if the new offload start vendor command
    * was used to start the stream on the controller. */
   bool offload_start_v2;
+  /* Set to true when the Qualcomm aptX Adaptive legacy command is active. */
+  bool offload_start_qti;
   tBTA_AV_FEAT sink_features; /* sink features */
   uint8_t reg_role;           /* bit0-src, bit1-sink */
   tBTA_AV_RC_FEAT rc_feature; /* save peer rc feature */
@@ -652,7 +669,15 @@ constexpr uint32_t kEnablingAttemptsIntervalMs = 100;
 constexpr uint8_t kEnablingAttemptsCountMaximum = 5;
 
 /* Vendor OFFLOAD VSC */
-#define HCI_VSQC_CONTROLLER_A2DP_OPCODE 0x000A
+#define HCI_QTI_CONTROLLER_A2DP_OPCODE 0x000A
+#define HCI_QTI_A2DP_OFFLOAD_START 0x0A
+#define HCI_QTI_A2DP_OFFLOAD_STOP 0x05
+
+/* Kept as an alias for existing QTI encoder-mode callers. */
+#define HCI_VSQC_CONTROLLER_A2DP_OPCODE HCI_QTI_CONTROLLER_A2DP_OPCODE
+#define VS_QHCI_ENCODER_MODE_CHANGE 0x13
+#define BTA_AV_ENCODER_MODE_CHANGE_ID 5
+#define BTA_AV_ENCODER_DATA_ID 0x0E
 
 #define VS_HCI_A2DP_OFFLOAD_START 0x01
 #define VS_HCI_A2DP_OFFLOAD_STOP 0x02
@@ -711,6 +736,8 @@ bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits);
 void bta_av_api_disconnect(tBTA_AV_DATA* p_data);
 void bta_av_set_use_latency_mode(tBTA_AV_SCB* p_scb, bool use_latency_mode);
 void bta_av_api_set_latency(tBTA_AV_DATA* p_data);
+void bta_av_set_codec_mode(tBTA_AV_DATA* p_data);
+void bta_av_update_aptx_data(tBTA_AV_DATA* p_data);
 void bta_av_sig_chg(tBTA_AV_DATA* p_data);
 void bta_av_signalling_timer(tBTA_AV_DATA* p_data);
 void bta_av_rc_disc_done(tBTA_AV_DATA* p_data);

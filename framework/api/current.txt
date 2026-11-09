@@ -457,10 +457,14 @@ package android.bluetooth {
     field public static final int SAMPLE_RATE_NONE = 0; // 0x0
     field @Deprecated public static final int SOURCE_CODEC_TYPE_AAC = 1; // 0x1
     field @Deprecated public static final int SOURCE_CODEC_TYPE_APTX = 2; // 0x2
+    field @Deprecated public static final int SOURCE_CODEC_TYPE_APTX_ADAPTIVE = 10; // 0xa
     field @Deprecated public static final int SOURCE_CODEC_TYPE_APTX_HD = 3; // 0x3
     field @Deprecated public static final int SOURCE_CODEC_TYPE_INVALID = 1000000; // 0xf4240
     field @Deprecated public static final int SOURCE_CODEC_TYPE_LC3 = 5; // 0x5
     field @Deprecated public static final int SOURCE_CODEC_TYPE_LDAC = 4; // 0x4
+    field @Deprecated @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final int SOURCE_CODEC_TYPE_LHDCV2 = 9; // 0x9
+    field @Deprecated @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final int SOURCE_CODEC_TYPE_LHDCV3 = 8; // 0x8
+    field @Deprecated @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final int SOURCE_CODEC_TYPE_LHDCV5 = 7; // 0x7
     field @Deprecated public static final int SOURCE_CODEC_TYPE_OPUS = 6; // 0x6
     field @Deprecated public static final int SOURCE_CODEC_TYPE_SBC = 0; // 0x0
   }
@@ -507,8 +511,11 @@ package android.bluetooth {
     method public void writeToParcel(@NonNull android.os.Parcel, int);
     field public static final long CODEC_ID_AAC = 2L; // 0x2L
     field public static final long CODEC_ID_APTX = 16797695L; // 0x1004fffL
+    field @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final long CODEC_ID_APTX_ADAPTIVE = 2902513663L; // 0xad00d7ffL
     field public static final long CODEC_ID_APTX_HD = 604035071L; // 0x2400d7ffL
     field public static final long CODEC_ID_LDAC = -1442763265L; // 0xffffffffaa012dffL
+    field @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final long CODEC_ID_LHDCV2 = 327256718079L; // 0x4c32053affL
+    field @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final long CODEC_ID_LHDCV3 = 327273495295L; // 0x4c33053affL
     field @FlaggedApi("com.android.bluetooth.flags.a2dp_lhdc_api") public static final long CODEC_ID_LHDCV5 = 327307049727L; // 0x4c35053affL
     field public static final long CODEC_ID_OPUS = 16834815L; // 0x100e0ffL
     field public static final long CODEC_ID_SBC = 0L; // 0x0L

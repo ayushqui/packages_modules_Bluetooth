@@ -23,9 +23,12 @@
 #include "hardware/bt_av.h"
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_constants.h"
+#include "stack/include/a2dp_vendor.h"
 #include "stack/include/a2dp_vendor_aptx_constants.h"
 #include "stack/include/a2dp_vendor_aptx_hd_constants.h"
 #include "stack/include/a2dp_vendor_ldac_constants.h"
+#include "stack/include/a2dp_vendor_lhdc_constants.h"
+#include "stack/include/a2dp_vendor_lhdcv5_constants.h"
 #include "stack/include/a2dp_vendor_opus_constants.h"
 #include "stack/include/avdt_api.h"
 
@@ -118,13 +121,66 @@ static constexpr uint8_t kOpusCodecCapabilities[] = {
         A2DP_OPUS_CODEC_LEN,         // Length
         AVDT_MEDIA_TYPE_AUDIO << 4,  // Media Type
         A2DP_MEDIA_CT_NON_A2DP,      // Media Codec Type Vendor
-        (A2DP_OPUS_VENDOR_ID & 0x000000FF),
+        A2DP_OPUS_VENDOR_ID & 0x000000FF,
         (A2DP_OPUS_VENDOR_ID & 0x0000FF00) >> 8,
         (A2DP_OPUS_VENDOR_ID & 0x00FF0000) >> 16,
         (A2DP_OPUS_VENDOR_ID & 0xFF000000) >> 24,
-        (A2DP_OPUS_CODEC_ID & 0x00FF),
+        A2DP_OPUS_CODEC_ID & 0x00FF,
         (A2DP_OPUS_CODEC_ID & 0xFF00) >> 8,
         A2DP_OPUS_CHANNEL_MODE_STEREO | A2DP_OPUS_20MS_FRAMESIZE | A2DP_OPUS_SAMPLING_FREQ_48000,
+};
+
+static constexpr uint8_t kLhdcV2CodecCapabilities[] = {
+        A2DP_LHDCV2_CODEC_LEN,
+        AVDT_MEDIA_TYPE_AUDIO << 4,
+        A2DP_MEDIA_CT_NON_A2DP,
+        0x3A,  // A2DP_LHDC_VENDOR_ID
+        0x05,  // A2DP_LHDC_VENDOR_ID
+        0x00,  // A2DP_LHDC_VENDOR_ID
+        0x00,  // A2DP_LHDC_VENDOR_ID
+        0x32,  // A2DP_LHDCV2_CODEC_ID
+        0x4C,  // A2DP_LHDCV2_CODEC_ID
+        A2DP_LHDC_SAMPLING_FREQ_44100 | A2DP_LHDC_SAMPLING_FREQ_48000 |
+                A2DP_LHDC_SAMPLING_FREQ_96000 | A2DP_LHDC_BIT_FMT_24,
+        A2DP_LHDC_VER2 | A2DP_LHDC_MAX_BIT_RATE_900K | A2DP_LHDC_LL_NONE,
+        A2DP_LHDC_CH_SPLIT_NONE | A2DP_LHDC_CH_SPLIT_TWS,
+};
+
+static constexpr uint8_t kLhdcV3CodecCapabilities[] = {
+        A2DP_LHDCV3_CODEC_LEN,
+        AVDT_MEDIA_TYPE_AUDIO << 4,
+        A2DP_MEDIA_CT_NON_A2DP,
+        0x3A,  // A2DP_LHDC_VENDOR_ID
+        0x05,  // A2DP_LHDC_VENDOR_ID
+        0x00,  // A2DP_LHDC_VENDOR_ID
+        0x00,  // A2DP_LHDC_VENDOR_ID
+        0x33,  // A2DP_LHDCV3_CODEC_ID
+        0x4C,  // A2DP_LHDCV3_CODEC_ID
+        A2DP_LHDC_SAMPLING_FREQ_44100 | A2DP_LHDC_SAMPLING_FREQ_48000 |
+                A2DP_LHDC_SAMPLING_FREQ_96000 | A2DP_LHDC_BIT_FMT_16 | A2DP_LHDC_BIT_FMT_24,
+        A2DP_LHDC_VER3 | A2DP_LHDC_VER4 | A2DP_LHDC_VER6 | A2DP_LHDC_MAX_BIT_RATE_900K |
+                A2DP_LHDC_LL_SUPPORTED | A2DP_LHDC_FEATURE_LLAC,
+        A2DP_LHDC_CH_SPLIT_NONE | A2DP_LHDC_CH_SPLIT_TWS | A2DP_LHDC_FEATURE_MIN_BR |
+                A2DP_LHDC_FEATURE_LHDCV4,
+};
+
+static constexpr uint8_t kLhdcV5CodecCapabilities[] = {
+        A2DP_LHDCV5_CODEC_LEN,
+        AVDT_MEDIA_TYPE_AUDIO << 4,
+        A2DP_MEDIA_CT_NON_A2DP,
+        0x3A,  // A2DP_LHDC_VENDOR_ID
+        0x05,  // A2DP_LHDC_VENDOR_ID
+        0x00,  // A2DP_LHDC_VENDOR_ID
+        0x00,  // A2DP_LHDC_VENDOR_ID
+        0x35,  // A2DP_LHDCV5_CODEC_ID
+        0x4C,  // A2DP_LHDCV5_CODEC_ID
+        A2DP_LHDCV5_SAMPLING_FREQ_44100 | A2DP_LHDCV5_SAMPLING_FREQ_48000 |
+                A2DP_LHDCV5_SAMPLING_FREQ_96000 | A2DP_LHDCV5_SAMPLING_FREQ_192000,
+        A2DP_LHDCV5_BIT_FMT_16 | A2DP_LHDCV5_BIT_FMT_24 | A2DP_LHDCV5_MAX_BIT_RATE_1000K |
+                A2DP_LHDCV5_MIN_BIT_RATE_64K,
+        A2DP_LHDCV5_VER_1 | A2DP_LHDCV5_FRAME_LEN_5MS,
+        A2DP_LHDCV5_FEATURE_LL,
+        0x00,
 };
 }  // namespace
 
@@ -145,6 +201,9 @@ TEST_F(MediaCodecCapabilitiesTest, ParseCodecId) {
   ASSERT_EQ(ParseCodecId(kAptxHdCodecCapabilities), CodecId::APTX_HD);
   ASSERT_EQ(ParseCodecId(kLdacCodecCapabilities), CodecId::LDAC);
   ASSERT_EQ(ParseCodecId(kOpusCodecCapabilities), CodecId::OPUS);
+  ASSERT_EQ(ParseCodecId(kLhdcV2CodecCapabilities), CodecId::LHDCV2);
+  ASSERT_EQ(ParseCodecId(kLhdcV3CodecCapabilities), CodecId::LHDCV3);
+  ASSERT_EQ(ParseCodecId(kLhdcV5CodecCapabilities), CodecId::LHDCV5);
 }
 
 // Test provided to validate the Media Codec Capabilities, the legacy APIs `A2DP_xxx`
@@ -156,6 +215,19 @@ TEST_F(MediaCodecCapabilitiesTest, A2DP_SourceCodecIndex) {
   ASSERT_EQ(A2DP_SourceCodecIndex(kAptxHdCodecCapabilities), BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD);
   ASSERT_EQ(A2DP_SourceCodecIndex(kLdacCodecCapabilities), BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC);
   ASSERT_EQ(A2DP_SourceCodecIndex(kOpusCodecCapabilities), BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS);
+  ASSERT_EQ(A2DP_SourceCodecIndex(kLhdcV2CodecCapabilities), BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV2);
+  ASSERT_EQ(A2DP_SourceCodecIndex(kLhdcV3CodecCapabilities), BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV3);
+  ASSERT_EQ(A2DP_SourceCodecIndex(kLhdcV5CodecCapabilities), BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5);
+}
+
+TEST_F(MediaCodecCapabilitiesTest, LhdcVendorDispatch) {
+  ASSERT_TRUE(A2DP_IsVendorSourceCodecValid(kLhdcV2CodecCapabilities));
+  ASSERT_TRUE(A2DP_IsVendorSourceCodecValid(kLhdcV3CodecCapabilities));
+  ASSERT_TRUE(A2DP_IsVendorSourceCodecValid(kLhdcV5CodecCapabilities));
+
+  ASSERT_STREQ(A2DP_VendorCodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV2), "LHDC V2");
+  ASSERT_STREQ(A2DP_VendorCodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV3), "LHDC V3");
+  ASSERT_STREQ(A2DP_VendorCodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_LHDCV5), "LHDC V5");
 }
 
 }  // namespace bluetooth::a2dp

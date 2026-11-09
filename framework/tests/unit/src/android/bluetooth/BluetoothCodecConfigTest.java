@@ -19,9 +19,12 @@ package android.bluetooth;
 import static com.google.common.truth.Truth.assertThat;
 
 import android.os.Parcel;
+import android.platform.test.annotations.EnableFlags;
+import android.platform.test.flag.junit.SetFlagsRule;
 
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.bluetooth.flags.Flags;
 import com.google.common.truth.Expect;
 
 import org.junit.Rule;
@@ -33,6 +36,7 @@ import org.junit.runner.RunWith;
 public class BluetoothCodecConfigTest {
 
     @Rule public Expect expect = Expect.create();
+    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     private static final int[] sCodecTypeArray =
             new int[] {
@@ -42,6 +46,9 @@ public class BluetoothCodecConfigTest {
                 BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_HD,
                 BluetoothCodecConfig.SOURCE_CODEC_TYPE_LDAC,
                 BluetoothCodecConfig.SOURCE_CODEC_TYPE_OPUS,
+                BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV5,
+                BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV3,
+                BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV2,
                 BluetoothCodecConfig.SOURCE_CODEC_TYPE_INVALID,
             };
     private static final int[] sCodecPriorityArray =
@@ -260,6 +267,15 @@ public class BluetoothCodecConfigTest {
             }
             if (codec_type == BluetoothCodecConfig.SOURCE_CODEC_TYPE_OPUS) {
                 expect.that(BluetoothCodecConfig.getCodecName(codec_type)).isEqualTo("Opus");
+            }
+            if (codec_type == BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV5) {
+                expect.that(BluetoothCodecConfig.getCodecName(codec_type)).isEqualTo("LHDC V5");
+            }
+            if (codec_type == BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV3) {
+                expect.that(BluetoothCodecConfig.getCodecName(codec_type)).isEqualTo("LHDC V3");
+            }
+            if (codec_type == BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV2) {
+                expect.that(BluetoothCodecConfig.getCodecName(codec_type)).isEqualTo("LHDC V2");
             }
             if (codec_type == BluetoothCodecConfig.SOURCE_CODEC_TYPE_INVALID) {
                 expect.that(BluetoothCodecConfig.getCodecName(codec_type))
@@ -594,6 +610,59 @@ public class BluetoothCodecConfigTest {
         c.writeToParcel(parcel, 0);
         parcel.setDataPosition(0);
         assertThat(BluetoothCodecConfig.CREATOR.createFromParcel(parcel)).isEqualTo(c);
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_A2DP_LHDC_API)
+    public void codecType_lhdcIdPreservesFortyBits() {
+        BluetoothCodecType codecType =
+                new BluetoothCodecType(
+                        BluetoothCodecConfig.SOURCE_CODEC_TYPE_LHDCV5,
+                        BluetoothCodecType.CODEC_ID_LHDCV5,
+                        "LHDC V5");
+
+        assertThat(codecType.getCodecId()).isEqualTo(BluetoothCodecType.CODEC_ID_LHDCV5);
+
+        Parcel parcel = Parcel.obtain();
+        codecType.writeToParcel(parcel, 0);
+        parcel.setDataPosition(0);
+        assertThat(BluetoothCodecType.CREATOR.createFromParcel(parcel)).isEqualTo(codecType);
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_A2DP_LHDC_API)
+    public void codecType_legacyLdacIdRemainsUnsigned() {
+        BluetoothCodecType legacyCodecType =
+                BluetoothCodecType.createFromType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_LDAC);
+        BluetoothCodecType nativeCodecType =
+                new BluetoothCodecType(
+                        BluetoothCodecConfig.SOURCE_CODEC_TYPE_LDAC,
+                        BluetoothCodecType.CODEC_ID_LDAC & 0xFFFFFFFFL,
+                        "LDAC");
+
+        assertThat(legacyCodecType.getCodecId())
+                .isEqualTo(BluetoothCodecType.CODEC_ID_LDAC & 0xFFFFFFFFL);
+        assertThat(legacyCodecType).isEqualTo(nativeCodecType);
+    }
+
+    @Test
+    public void sameCodecSpecificParameters_aptxAdaptiveCodecSpecific4ForcesUpdate() {
+        BluetoothCodecConfig current =
+                new BluetoothCodecConfig.Builder()
+                        .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE)
+                        .build();
+        BluetoothCodecConfig unchanged =
+                new BluetoothCodecConfig.Builder()
+                        .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE)
+                        .build();
+        BluetoothCodecConfig encoderDataRequest =
+                new BluetoothCodecConfig.Builder()
+                        .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE)
+                        .setCodecSpecific4(0x4000)
+                        .build();
+
+        assertThat(current.sameCodecSpecificParameters(unchanged)).isTrue();
+        assertThat(current.sameCodecSpecificParameters(encoderDataRequest)).isFalse();
     }
 
     private static BluetoothCodecConfig buildBluetoothCodecConfig(
